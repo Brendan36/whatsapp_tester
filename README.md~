@@ -1,0 +1,36 @@
+
+# 🧪 WhatsApp Web Automation Tester
+
+An end-to-end QA automation project built with Streamlit and Selenium to test WhatsApp Web functionalities.
+
+## ⚙️ Objectives
+- Test Login
+- Sending Messages Test
+- Receiving Messages Test
+- Test Checking Delivery Status 
+- Logout Test
+
+## 🚀 Features
+✅ Modular design
+✅ ChromeDriver automation
+✅ Logs, CSVs, visual charts
+✅ Streamlit dashboard
+✅ Interactive Charts:
+- 📈 Pie Chart: Test Result Distribution
+- 📊 Timeline Chart: Action Sequence
+- 📊 Bar Chart: Execution Timeline
+## ⚙️ Installation
+```bash
+pip install -r requirements.txt
+```
+
+## 🎯 Running
+```bash
+streamlit run dashboard/app.py
+```
+
+## 🖥️ Screenshots
+_()_
+
+## 🧠 Author
+_Brendan_
