@@ -1,56 +1,22 @@
 # dashboard/app.py
 
+import streamlit as st
 import io
 import pandas as pd
-import streamlit as st
 import sys
 import os
 import plotly.express as px
 
-# Fix import path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from tests import test_login, test_send_message, test_receive_message, test_delivery_status, test_logout
 
-# --- Helper Functions ---
-
-def resize_streamlit_window(width=960, height=1080):
-    """Resize Streamlit browser window."""
-    resize_script = f"""
-    <script>
-    window.resizeTo({width}, {height});
-    window.moveTo(0, 0);
-    </script>
-    """
-    st.markdown(resize_script, unsafe_allow_html=True)
-
-def create_summary_table(logs):
-    """Create a Pass/Fail summary DataFrame from logs."""
-    actions = []
-    results = []
-
-    for entry in logs:
-        parts = entry.split('] [')
-        if len(parts) >= 3:
-            status = parts[2].replace(']', '')
-            message = ']'.join(parts[3:]).replace(']', '')
-            actions.append(message.strip())
-            results.append(status.strip())
-
-    df = pd.DataFrame({
-        "Action": actions,
-        "Result": results
-    })
-    return df
-
-# --- Streamlit Page Setup ---
-
 st.set_page_config(layout="wide")
+st.image("assets/divider_dark.png", width=100)
 st.title("🧪 WhatsApp Web Tester Dashboard")
 
 col1, col2 = st.columns([1, 2])
 
-# --- Session State Initialization ---
-
+# Session State Initialization
 if 'driver' not in st.session_state:
     st.session_state.driver = None
 if 'login_completed' not in st.session_state:
@@ -64,267 +30,108 @@ if 'show_delivery_status_button' not in st.session_state:
 if 'show_logout_button' not in st.session_state:
     st.session_state.show_logout_button = False
 
-# --- UI Controls ---
+def create_summary_table(logs):
+    actions, results = [], []
+    for entry in logs:
+        parts = entry.split('] [')
+        if len(parts) >= 3:
+            status = parts[2].replace(']', '')
+            message = ']'.join(parts[3:]).replace(']', '')
+            actions.append(message.strip())
+            results.append(status.strip())
+    return pd.DataFrame({"Status": actions, "Result": results})
 
 with col1:
-    st.markdown("##### 🔧 Test Controls")
+    st.markdown("#### 🔧 Test Controls")
 
-    # --- Login Test ---
-    if not st.session_state.login_completed:
-        if st.button("▶️ Run Login Test", key="login_btn"):
-            resize_streamlit_window()
-            driver, logs, login_successful = test_login.test_login()
+    if st.button("▶️ Run Login Test"):
+        driver, logs, login_successful = test_login.test_login()
+        st.session_state.logs_master.extend(logs)
+        if login_successful:
+            st.session_state.driver = driver
+            st.session_state.login_completed = True
+            st.success("✅ Login successful!")
+        else:
+            st.error("⚠️ Login test failed. Please retry.")
 
-            st.session_state.logs_master.extend(logs)
-
-            if login_successful:
-                st.session_state.driver = driver
-                st.session_state.login_completed = True
-                st.success("✅ Login successful!")
-            else:
-                st.error("⚠️ Login test complete - unsuccessful login - please retry.")
-                if driver:
-                    driver.quit()
-
-            with col2:
-                st.header("📝 Login Test Log")
-                for log in logs:
-                    st.write(log)
-
-                text_buffer = io.StringIO()
-                for line in logs:
-                    text_buffer.write(line + "\n")
-                text_data = text_buffer.getvalue()
-
-                st.download_button(
-                    label="⬇️ Download Login Logs as TXT",
-                    data=text_data,
-                    file_name="login_test_logs.txt",
-                    mime="text/plain",
-                    key="login_logs_dl"
-                )
-
-                # 📋 Mini summary table
-                summary_table = create_summary_table(logs)
-                st.dataframe(summary_table)
-
-                csv = summary_table.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="⬇️ Download Login Summary CSV",
-                    data=csv,
-                    file_name="login_summary.csv",
-                    mime="text/csv",
-                    key="login_summary_dl"
-                )
-
-    # --- Send Message Test ---
     if st.session_state.login_completed:
-
         if not st.session_state.show_send_message_inputs:
-            if st.button("▶️ Run Send Message Test", key="show_send_message_btn"):
+            if st.button("▶️ Run Send Message Test"):
                 st.session_state.show_send_message_inputs = True
-            with col2:
-                if st.session_state.show_send_message_inputs:
-                    st.markdown("##### 📩 Send Message Inputs")
 
-                    contact_name = st.text_input("Enter Contact Name or Number", value="Test Contact", key="contact_name_input")
-                    custom_message = st.text_area("Enter Message", value="Hello from WhatsApp Web Tester Bot!", key="custom_message_input")
-
-            if st.button("✅ Send Message", key="send_message_btn"):
-                driver = st.session_state.driver
-
-                logs_send = test_send_message.test_send_message(driver, contact_name, custom_message)
-                st.success("✅ Message sent successfully!")
-                st.session_state.logs_master.extend(logs_send)
-
-                logs_receive = test_receive_message.test_receive_message(driver)
-                st.success("✅ Receive Message check completed!")
-                st.session_state.logs_master.extend(logs_receive)
-
-                st.session_state.show_delivery_status_button = True
-
-                with col2:
-                    st.header("📝 Send + Receive Logs")
-                    for log in logs_send + logs_receive:
-                        st.write(log)
-
-                    text_buffer = io.StringIO()
-                    for line in logs_send + logs_receive:
-                        text_buffer.write(line + "\n")
-                    text_data = text_buffer.getvalue()
-
-                    st.download_button(
-                        label="⬇️ Download Send + Receive Logs as TXT",
-                        data=text_data,
-                        file_name="send_receive_logs.txt",
-                        mime="text/plain",
-                        key="send_receive_logs_dl"
-                    )
-
-                    # 📋 Mini summary
-                    summary_table = create_summary_table(logs_send + logs_receive)
-                    st.dataframe(summary_table)
-
-                    csv = summary_table.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="⬇️ Download Send+Receive Summary CSV",
-                        data=csv,
-                        file_name="send_receive_summary.csv",
-                        mime="text/csv",
-                        key="send_receive_summary_dl"
-                    )
-
-    # --- Delivery Status Test ---
     if st.session_state.show_delivery_status_button:
-        if st.button("▶️ Run Delivery Status Test", key="delivery_status_btn"):
+        if st.button("▶️ Run Delivery Status Test"):
             driver = st.session_state.driver
-            logs = test_delivery_status.test_delivery_status(driver)
-            st.success("✅ Delivery Status test completed!")
-
-            st.session_state.logs_master.extend(logs)
+            logs_delivery = test_delivery_status.test_delivery_status(driver)
+            st.session_state.logs_master.extend(logs_delivery)
             st.session_state.show_logout_button = True
+            st.success("✅ Delivery Status Checked!")
 
-            with col2:
-                st.header("📝 Delivery Status Logs")
-                for log in logs:
-                    st.write(log)
-
-                text_buffer = io.StringIO()
-                for line in logs:
-                    text_buffer.write(line + "\n")
-                text_data = text_buffer.getvalue()
-
-                st.download_button(
-                    label="⬇️ Download Delivery Status Logs as TXT",
-                    data=text_data,
-                    file_name="delivery_status_logs.txt",
-                    mime="text/plain",
-                    key="delivery_status_logs_dl"
-                )
-
-                summary_table = create_summary_table(logs)
-                st.dataframe(summary_table)
-
-                csv = summary_table.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="⬇️ Download Delivery Status Summary CSV",
-                    data=csv,
-                    file_name="delivery_status_summary.csv",
-                    mime="text/csv",
-                    key="delivery_status_summary_dl"
-                )
-
-    # --- Logout Test ---
     if st.session_state.show_logout_button:
-        if st.button("▶️ Run Logout Test", key="logout_btn"):
+        if st.button("▶️ Run Logout Test"):
             driver = st.session_state.driver
-            logs = test_logout.test_logout(driver)
-            st.success("✅ Logout test completed!")
-
+            logs_logout = test_logout.test_logout(driver)
+            st.session_state.logs_master.extend(logs_logout)
             if driver:
                 driver.quit()
+            st.success("✅ Logged Out Successfully!")
 
-            st.session_state.logs_master.extend(logs)
+with col2:
+    st.markdown("#### 📝 Test Logs & Inputs")
 
-            with col2:
-                st.header("📝 Logout Logs")
-                for log in logs:
-                    st.write(log)
+    if st.session_state.show_send_message_inputs:
+        contact_name = st.text_input("Enter Contact Name:", "Test Contact")
+        custom_message = st.text_area("Enter Message:", "Hello from WhatsApp Web Tester Bot! 🚀")
+        if st.button("✅ Send Message"):
+            driver = st.session_state.driver
+            logs_send = test_send_message.test_send_message(driver, contact_name, custom_message)
+            st.session_state.logs_master.extend(logs_send)
+            logs_receive = test_receive_message.test_receive_message(driver)
+            st.session_state.logs_master.extend(logs_receive)
+            st.success("✅ Message Sent and Received Checked!")
+            st.session_state.show_delivery_status_button = True
 
-                text_buffer = io.StringIO()
-                for line in logs:
-                    text_buffer.write(line + "\n")
-                text_data = text_buffer.getvalue()
+    if st.session_state.logs_master:
+        final_summary_df = create_summary_table(st.session_state.logs_master)
+        st.dataframe(final_summary_df)
 
-                st.download_button(
-                    label="⬇️ Download Logout Logs as TXT",
-                    data=text_data,
-                    file_name="logout_logs.txt",
-                    mime="text/plain",
-                    key="logout_logs_dl"
-                )
+        csv = final_summary_df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Download Full Test Summary CSV",
+            data=csv,
+            file_name="full_test_summary.csv",
+            mime="text/csv"
+        )
 
-                summary_table = create_summary_table(logs)
-                st.dataframe(summary_table)
+        result_counts = final_summary_df['Result'].value_counts().reset_index()
+        result_counts.columns = ['Result', 'Count']
+        fig_pie = px.pie(result_counts, names='Result', values='Count', title="📈 Test Result Distribution")
+        st.plotly_chart(fig_pie, use_container_width=True)
 
-                csv = summary_table.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="⬇️ Download Logout Summary CSV",
-                    data=csv,
-                    file_name="logout_summary.csv",
-                    mime="text/csv",
-                    key="logout_summary_dl"
-                )
+        actions, timestamps = [], []
+        for entry in st.session_state.logs_master:
+            parts = entry.split('] [')
+            if len(parts) >= 2:
+                timestamp = parts[0].replace('[', '').strip()
+                action = ']'.join(parts[3:]).replace(']', '').strip()
+                timestamps.append(timestamp)
+                actions.append(action)
 
-            # --- Final Full Session Summary ---
-            with col2:
-                st.markdown("### 🏁 Full Test Session Summary")
+        df_timeline = pd.DataFrame({"Action": actions, "Timestamp": timestamps})
+        fig_timeline = px.timeline(df_timeline, x_start="Timestamp", x_end="Timestamp", y="Action", color_discrete_sequence=["#636EFA"], title="📊 Test Execution Timeline")
+        fig_timeline.update_yaxes(autorange="reversed")
+        st.plotly_chart(fig_timeline, use_container_width=True)
 
-                if st.session_state.logs_master:
-                    final_summary_df = create_summary_table(st.session_state.logs_master)
-                    st.dataframe(final_summary_df)
+        fig_bar = px.bar(df_timeline, x="Timestamp", y="Action", color_discrete_sequence=["#636EFA"], title="📊 Test Execution Timeline (Bar Chart)")
+        fig_bar.update_yaxes(autorange="reversed")
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-                    csv_full = final_summary_df.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="⬇️ Download Full Session Summary CSV",
-                        data=csv_full,
-                        file_name="full_test_session_summary.csv",
-                        mime="text/csv",
-                        key="full_summary_dl"
-                    )
-
-                    # 📈 Pie Chart of Pass/Fail
-                    st.markdown("### 📈 Test Results Breakdown (Pie Chart)")
-                    result_counts = final_summary_df['Result'].value_counts().reset_index()
-                    result_counts.columns = ['Result', 'Count']
-
-                    fig_pie = px.pie(
-                        result_counts,
-                        names='Result',
-                        values='Count',
-                        title="Test Result Distribution",
-                        color_discrete_sequence=px.colors.qualitative.Safe
-                    )
-                    st.plotly_chart(fig_pie, use_container_width=True)
-
-                    # 📊 Timeline Chart
-                    st.markdown("### 📊 Test Actions Timeline (Timeline Chart)")
-
-                    actions = []
-                    timestamps = []
-
-                    for entry in st.session_state.logs_master:
-                        parts = entry.split('] [')
-                        if len(parts) >= 2:
-                            timestamp = parts[0].replace('[', '').strip()
-                            action = ']'.join(parts[3:]).replace(']', '').strip()
-                            timestamps.append(timestamp)
-                            actions.append(action)
-
-                    df_timeline = pd.DataFrame({
-                        "Action": actions,
-                        "Timestamp": timestamps
-                    })
-
-                    fig_timeline = px.timeline(
-                        df_timeline,
-                        x_start="Timestamp",
-                        x_end="Timestamp",
-                        y="Action",
-                        color_discrete_sequence=["#636EFA"],
-                        title="Test Execution Timeline (Timeline Chart)"
-                    )
-                    fig_timeline.update_yaxes(autorange="reversed")
-                    st.plotly_chart(fig_timeline, use_container_width=True)
-
-                    # 📊 Bar Chart
-                    st.markdown("### 📊 Test Actions Timeline (Bar Chart)")
-                    fig_bar = px.bar(
-                        df_timeline,
-                        x="Timestamp",
-                        y="Action",
-                        color_discrete_sequence=["#636EFA"],
-                        title="Test Execution Timeline (Bar Chart)"
-                    )
-                    fig_bar.update_yaxes(autorange="reversed")
-                    st.plotly_chart(fig_bar, use_container_width=True)
+# ─── Footer ───
+st.markdown("---")
+col1, col2, col3 = st.columns([1, 2, 1])
+footer_html = """
+    <p style="text-align:center; color:gray; font-size:0.8em; margin:0;">
+      Built with 💡 by | be | © 2025
+    </p>
+    """
+col2.markdown(footer_html, unsafe_allow_html=True)
